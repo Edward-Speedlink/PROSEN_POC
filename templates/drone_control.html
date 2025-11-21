@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Drone Control</title>
+</head>
+<body>
+    <h1>Drone Dispatch Test</h1>
+    <form id="dispatchForm">
+        <label>Latitude:</label><input type="text" id="lat" value="37.7749"><br>
+        <label>Longitude:</label><input type="text" id="lon" value="-122.4194"><br>
+        <label>Follow Target:</label><input type="checkbox" id="follow"><br>
+        <button type="button" onclick="dispatchDrone()">Dispatch Drone</button>
+    </form>
+    <!-- Existing HTML -->
+
+<h2>Drone Video Stream</h2>
+<img src="/drone_stream" width="640" height="480" alt="Drone Live Feed">
+
+<!-- Existing script -->
+    <script>
+        function dispatchDrone() {
+            const lat = document.getElementById('lat').value;
+            const lon = document.getElementById('lon').value;
+            const follow = document.getElementById('follow').checked;
+            fetch('/drone_dispatch', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({lat: parseFloat(lat), lon: parseFloat(lon), follow})
+            }).then(res => res.json()).then(data => alert(JSON.stringify(data)));
+        }
+    </script>
+</body>
+</html>

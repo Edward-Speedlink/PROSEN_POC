@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  flask_app:
+    build: .
+    container_name: PROSEN_FLASK_POC
+    restart: always
+    ports:
+      - "10030:5000"  # Public port 10010 maps to container port 5000
+    environment:
+      - FLASK_ENV=development
+      - SQLALCHEMY_DATABASE_URI=postgresql://user:password@db:5432/your_db
+      - SQLALCHEMY_TRACK_MODIFICATIONS=False
+      - JWT_SECRET_KEY=supersecretkey
+    depends_on:
+      - db
+
+  db:
+    image: postgres:16
+    container_name: postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: your_db
+    ports:
+      - "10011:5432"  # optional if you want external access
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Plate Search</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
+    <style>
+        #video-container { position: relative; width: 640px; height: 480px; border: 1px solid #ccc; }
+        #feed { width: 100%; height: 100%; }
+        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        #results { max-height: 200px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <h1>Plate Search for {{ camera_id }}</h1>
+    <div id="video-container">
+        <img id="feed" src="/stream/{{ camera_id }}" alt="Camera Stream" style="width: 100%; height: 100%;" />
+        <canvas id="overlay"></canvas>
+    </div>
+    <input id="watchlist" placeholder="Enter plates (e.g., ABC123,XYZ789)" />
+    <button onclick="startSearch()">Start Plate Search (60s)</button>
+    <button onclick="stopSearch()">Stop</button>
+    <div id="results"></div>
+    <!-- Add after <div id="results"></div> -->
+<div id="live-plates" style="margin-top: 20px;">
+    <h2>Live Plates (Conf 0.6+)</h2>
+    <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr>
+                <th>Plate Text</th>
+                <th>Confidence</th>
+                <th>Track ID</th>
+                <th>Detected At</th>
+            </tr>
+        </thead>
+        <tbody id="plates-table"></tbody>
+    </table>
+</div>
+
+    <script>
+        const socket = io('http://localhost:5000', { transports: ['websocket'] });
+        const cameraId = '{{ camera_id }}';
+        const canvas = document.getElementById('overlay');
+        const ctx = canvas.getContext('2d');
+        const resultsDiv = document.getElementById('results');
+        const img = document.getElementById('feed');
+
+        // Debug stream load
+        img.onerror = () => console.error('Stream failed to load');
+        img.onload = () => console.log('Stream loaded successfully');
+
+        // Connect to WS room
+        socket.on('connect', () => {
+            console.log('Socket.IO connected');
+            socket.emit('connect_plate_ws', { camera_id: cameraId });
+        });
+        socket.on('connect_error', (err) => console.error('Socket.IO connect error:', err));
+
+        let uniquePlates = {};  // Dedup by track_id
+
+        // Receive updates (same as before)
+        socket.on('plate_update', (data) => {
+            if (data.camera_id !== cameraId) return;
+            console.log('Plate update:', data.plates);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            data.plates.forEach(plate => {
+                ctx.strokeStyle = 'green';
+                ctx.lineWidth = 2;
+                const width = plate.box[2] - plate.box[0];
+                const height = plate.box[3] - plate.box[1];
+                ctx.strokeRect(plate.box[0], plate.box[1], width, height);
+                ctx.fillStyle = 'white';
+                ctx.font = '16px Arial';
+                ctx.fillText(`${plate.text} (Conf: ${plate.conf.toFixed(2)})`, plate.box[0], plate.box[1] - 5);
+                resultsDiv.innerHTML += `<p>Plate: ${plate.text} (Conf: ${plate.conf.toFixed(2)})</p>`;
+            });
+            // Dedup and add to table
+            if (!uniquePlates[plate.track_id] || plate.conf > uniquePlates[plate.track_id].conf) {
+                uniquePlates[plate.track_id] = plate;
+            }
+        });
+
+        // Update table
+        const tableBody = document.getElementById('plates-table');
+        tableBody.innerHTML = '';
+        Object.values(uniquePlates).forEach(plate => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${plate.text}</td>
+                <td>${plate.conf.toFixed(2)}</td>
+                <td>${plate.track_id}</td>
+                <td>${new Date().toLocaleTimeString()}</td>
+            `;
+            tableBody.appendChild(row);
+        });
+
+        socket.on('search_complete', (data) => {
+            if (data.camera_id === cameraId) {
+                alert('Search complete!');
+                resultsDiv.innerHTML += '<p>Search stopped.</p>';
+            }
+        });
+
+        function startSearch() {
+            console.log('Starting plate search');
+            fetch(`/start_plate_search/${cameraId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ duration: 60 })
+            }).then(res => res.json()).then(data => console.log('Start response:', data))
+              .catch(err => console.error('Start error:', err));
+        }
+
+        function stopSearch() {
+            console.log('Stopping plate search');
+            fetch(`/stop_plate_search/${cameraId}`, { method: 'POST' })
+                .then(res => res.json()).then(data => console.log('Stop response:', data))
+                .catch(err => console.error('Stop error:', err));
+        }
+
+        const watchlistInput = document.getElementById('watchlist');
+let watchlist = [];
+watchlistInput.onchange = () => {
+    watchlist = watchlistInput.value.split(',').map(s => s.trim().toUpperCase());
+};
+socket.on('plate_update', (data) => {
+    if (data.camera_id !== cameraId) return;
+    console.log('Plate update:', data.plates);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    data.plates.forEach(plate => {
+        ctx.strokeStyle = watchlist.includes(plate.text) ? 'red' : 'green';
+        ctx.lineWidth = 2;
+        const width = plate.box[2] - plate.box[0];
+        const height = plate.box[3] - plate.box[1];
+        ctx.strokeRect(plate.box[0], plate.box[1], width, height);
+        ctx.fillStyle = 'white';
+        ctx.font = '16px Arial';
+        ctx.fillText(`${plate.text} (Conf: ${plate.conf.toFixed(2)})`, plate.box[0], plate.box[1] - 5);
+        resultsDiv.innerHTML += `<p>Plate: ${plate.text} (Conf: ${plate.conf.toFixed(2)})</p>`;
+    });
+});
+
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+<!-- <!DOCTYPE html>
+<html>
+<head>
+    <title>Plate Search</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.1/socket.io.js"></script>
+    <style>
+        #video-container { position: relative; width: 640px; height: 480px; }
+        #feed { width: 100%; height: 100%; }
+        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <h1>Plate Search for {{ camera_id }}</h1>
+    <div id="video-container">
+        <video id="feed" src="/stream/{{ camera_id }}" autoplay muted></video>
+        <canvas id="overlay"></canvas>
+    </div>
+    <button onclick="startSearch()">Start Plate Search (60s)</button>
+    <button onclick="stopSearch()">Stop</button>
+    <div id="results"></div>
+
+    <script>
+        const socket = io('http://localhost:5000');
+        const cameraId = '{{ camera_id }}';
+        const canvas = document.getElementById('overlay');
+        const ctx = canvas.getContext('2d');
+        const resultsDiv = document.getElementById('results');
+
+        // Connect to WS room
+        socket.emit('connect_plate_ws', { camera_id: cameraId });
+
+        // Receive updates
+        socket.on('plate_update', (data) => {
+            if (data.camera_id !== cameraId) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            data.plates.forEach(plate => {
+                ctx.strokeStyle = 'green';
+                ctx.lineWidth = 2;
+                const width = plate.box[2] - plate.box[0];
+                const height = plate.box[3] - plate.box[1];
+                ctx.strokeRect(plate.box[0], plate.box[1], width, height);
+                ctx.fillStyle = 'white';
+                ctx.font = '16px Arial';
+                ctx.fillText(`${plate.text} (Conf: ${plate.conf.toFixed(2)})`, plate.box[0], plate.box[1] - 5);
+            });
+            // Log to div for debug
+            resultsDiv.innerHTML += `<p>Plates: ${JSON.stringify(data.plates)}</p>`;
+        });
+
+        socket.on('search_complete', (data) => {
+            if (data.camera_id === cameraId) alert('Search complete!');
+        });
+
+        function startSearch() {
+            fetch(`/start_plate_search/${cameraId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ duration: 60 })
+            }).then(res => res.json()).then(data => console.log(data));
+        }
+
+        function stopSearch() {
+            fetch(`/stop_plate_search/${cameraId}`, { method: 'POST' })
+                .then(res => res.json()).then(data => console.log(data));
+        }
+    </script>
+</body>
+</html> -->

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Face Search - {{ camera_id }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #video-container { position: relative; display: inline-block; }
+        #overlay { position: absolute; top: 0; left: 0; z-index: 10; pointer-events: none; }
+        #results { margin-top: 20px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+        th, td { border: 1px solid black; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        button {
+            padding: 10px 20px; margin: 5px; font-size: 16px; cursor: pointer;
+            background-color: #4CAF50; color: white; border: none; border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        button:hover { background-color: #45a049; }
+        button:active { background-color: #3d8b40; }
+        input[type="file"], input[type="text"], input[type="number"], select {
+            padding: 8px; margin: 5px; font-size: 14px; width: 200px;
+            border: 1px solid #ccc; border-radius: 4px;
+        }
+        input:focus, select:focus {
+            outline: none; border-color: #4CAF50;
+            box-shadow: 0 0 5px rgba(76,175,80,0.3);
+        }
+        form { display: flex; flex-direction: column; gap: 10px; max-width: 300px; }
+        .button-container { margin: 10px 0; }
+        h3 { margin-top: 30px; }
+    </style>
+</head>
+<body>
+    <h1>Face Search - {{ camera_id }}</h1>
+
+    <div id="video-container">
+        <img id="feed" src="{{ url_for('camera.stream', camera_id=camera_id) }}" alt="Camera Feed" width="640">
+        <canvas id="overlay" width="640" height="480"></canvas>
+    </div>
+
+    <div class="button-container">
+        <button onclick="startSearch()">Start Face Search</button>
+        <button onclick="stopSearch()">Stop Face Search</button>
+    </div>
+
+    <div>
+        <h3>Add Known Face</h3>
+        <form id="add-face-form" enctype="multipart/form-data">
+            <input type="file" name="file" accept="image/*" required>
+            <input type="text" name="name" placeholder="Name" required>
+            <input type="number" name="age" placeholder="Age">
+            <input type="text" name="role" placeholder="Role">
+            <button type="submit">Add Face</button>
+        </form>
+    </div>
+
+    <!-- 🆕 NEW SECTION FOR FACE SEARCH -->
+    <div>
+        <h3>Search for a Face</h3>
+        <form id="search-face-form" enctype="multipart/form-data">
+            <input type="file" name="search_image" accept="image/*" required>
+            <label>Select Cameras:</label>
+            <select name="cameras" id="camera-select" multiple>
+                {% for cam_id in camera_list %}
+                    <option value="{{ cam_id }}">{{ cam_id }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit">Search</button>
+        </form>
+    </div>
+
+    <div id="results"></div>
+    <table>
+        <thead>
+            <tr><th>Name</th><th>Role</th><th>Age</th><th>Time</th></tr>
+        </thead>
+        <tbody id="faces-table"></tbody>
+    </table>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
+    <script>
+        const socket = io('http://localhost:5000', { transports: ['websocket'] });
+        const cameraId = '{{ camera_id }}';
+        const canvas = document.getElementById('overlay');
+        const ctx = canvas.getContext('2d');
+        const resultsDiv = document.getElementById('results');
+        const tableBody = document.getElementById('faces-table');
+        let watchlistFaces = [];
+        let uniqueFaces = {};
+
+        // Load watchlist
+        fetch('/watchlist_faces')
+            .then(res => res.json())
+            .then(data => watchlistFaces = data.watchlist_faces)
+            .catch(console.error);
+
+        // Debug stream
+        const img = document.getElementById('feed');
+        img.onerror = () => console.error('Stream failed to load');
+        img.onload = () => console.log('Stream loaded successfully');
+
+        // Socket.io
+        socket.on('connect', () => {
+            console.log('Socket.IO connected');
+            socket.emit('connect_face_ws', { camera_id: cameraId });
+        });
+        socket.on('face_update', (data) => {
+            if (data.camera_id !== cameraId) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            data.faces.forEach(face => {
+                ctx.strokeStyle = watchlistFaces.includes(face.name) ? 'red' : 'green';
+                ctx.lineWidth = 2;
+                const width = face.box[2] - face.box[0];
+                const height = face.box[3] - face.box[1];
+                ctx.strokeRect(face.box[0], face.box[1], width, height);
+                ctx.fillStyle = 'white';
+                ctx.font = '16px Arial';
+                ctx.fillText(`${face.name} (${face.role}, ${face.age})`, face.box[0], face.box[1] - 5);
+                if (!uniqueFaces[face.name]) {
+                    uniqueFaces[face.name] = true;
+                    const row = document.createElement('tr');
+                    row.innerHTML = `<td>${face.name}</td><td>${face.role||'N/A'}</td><td>${face.age||'N/A'}</td><td>${new Date().toLocaleTimeString()}</td>`;
+                    tableBody.appendChild(row);
+                }
+            });
+        });
+
+        // Start/stop search
+        function startSearch() {
+            fetch(`/start_face_search/${cameraId}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ duration: 60 })
+            });
+        }
+        function stopSearch() {
+            fetch(`/stop_face_search/${cameraId}`, { method: 'POST' });
+        }
+
+        // Add known face
+        document.getElementById('add-face-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            fetch(`/add_known_face/${cameraId}`, { method: 'POST', body: formData })
+                .then(res => res.json())
+                .then(data => alert(data.status || data.error))
+                .catch(console.error);
+        });
+
+        // 🆕 Search face across cameras
+        document.getElementById('search-face-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const selected = Array.from(document.getElementById('camera-select').selectedOptions).map(o => o.value);
+            formData.append('camera_ids', JSON.stringify(selected));
+            fetch('/search_face', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                console.log('Search response:', data);
+                resultsDiv.innerHTML = `<p>${data.message || 'Search started!'}</p>`;
+            })
+            .catch(console.error);
+        });
+    </script>
+</body>
+</html>
