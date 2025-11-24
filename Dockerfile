@@ -1,5 +1,5 @@
 # Use Python 3.10 for maximum compatibility
-FROM python:3.11-slim
+FROM python:3.10-slim
 
 # Prevent Python from buffering and writing .pyc files
 ENV PYTHONDONTWRITEBYTECODE=1
