@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     gcc \
     g++ \
+    git \ 
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first
