@@ -1,5 +1,5 @@
 # Use Python 3.10 for maximum compatibility
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 # Prevent Python from buffering and writing .pyc files
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -27,6 +27,11 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
+
+
+# If still having issues, try this instead:
+# RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+# RUN pip install --no-cache-dir -r requirements.txt || pip install --no-cache-dir --use-deprecated=legacy-resolver -r requirements.txt
 
 # Copy your full project
 COPY . .
