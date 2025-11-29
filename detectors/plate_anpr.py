@@ -11,7 +11,7 @@ import os
 # # Now import Sort
 # from sort import Sort
 
-from .sort.sort import Sort
+from detectors.sort.sort import Sort
 
 
 import cv2
