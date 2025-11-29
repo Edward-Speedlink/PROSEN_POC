@@ -32,10 +32,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Alternative: Install SORT manually if requirements method fails
 RUN pip install --no-cache-dir git+https://github.com/abewley/sort.git
 
-# If still having issues, try this instead:
-# RUN pip install --no-cache-dir --upgrade pip setuptools wheel
-# RUN pip install --no-cache-dir -r requirements.txt || pip install --no-cache-dir --use-deprecated=legacy-resolver -r requirements.txt
 
+# Install SORT tracker by copying files
+RUN git clone https://github.com/abewley/sort.git /tmp/sort && \
+    mkdir -p /app/detectors/sort && \
+    cp /tmp/sort/sort.py /app/detectors/sort/ && \
+    rm -rf /tmp/sort
+    
 # Copy your full project
 COPY . .
 
