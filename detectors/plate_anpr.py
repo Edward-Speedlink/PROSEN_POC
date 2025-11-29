@@ -2,14 +2,17 @@ import sys
 import os
 
 # Add the cloned 'sort' directory to sys.path (relative to this file)
-sort_path = os.path.join(os.path.dirname(__file__), 'sort')
-if os.path.exists(sort_path):
-    sys.path.append(sort_path)
-else:
-    raise ImportError("SORT directory not found at detectors/sort/. Ensure it's cloned correctly.")
+# sort_path = os.path.join(os.path.dirname(__file__), 'sort')
+# if os.path.exists(sort_path):
+#     sys.path.append(sort_path)
+# else:
+#     raise ImportError("SORT directory not found at detectors/sort/. Ensure it's cloned correctly.")
 
-# Now import Sort
-from sort import Sort
+# # Now import Sort
+# from sort import Sort
+
+from .sort.sort import Sort
+
 
 import cv2
 import numpy as np

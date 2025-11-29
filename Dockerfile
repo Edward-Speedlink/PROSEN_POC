@@ -29,16 +29,20 @@ COPY requirements.txt .
 RUN pip install --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Alternative: Install SORT manually if requirements method fails
-RUN pip install --no-cache-dir git+https://github.com/abewley/sort.git
+# # Alternative: Install SORT manually if requirements method fails
+# RUN pip install --no-cache-dir git+https://github.com/abewley/sort.git
 
 
-# Install SORT tracker by copying files
-RUN git clone https://github.com/abewley/sort.git /tmp/sort && \
-    mkdir -p /app/detectors/sort && \
-    cp /tmp/sort/sort.py /app/detectors/sort/ && \
-    rm -rf /tmp/sort
-    
+# # Install SORT tracker by copying files directly
+# RUN git clone https://github.com/abewley/sort.git /tmp/sort && \
+#     mkdir -p /app/sort && \
+#     cp /tmp/sort/sort.py /app/sort/ && \
+#     cp /tmp/sort/README.md /app/sort/ && \
+#     rm -rf /tmp/sort
+
+# # Create __init__.py to make it a proper Python package
+# RUN echo "" > /app/sort/__init__.py
+
 # Copy your full project
 COPY . .
 
