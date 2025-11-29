@@ -29,7 +29,7 @@ RUN pip install --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Alternative: Install SORT manually if requirements method fails
-# RUN pip install --no-cache-dir git+https://github.com/abewley/sort.git
+RUN pip install --no-cache-dir git+https://github.com/abewley/sort.git
 
 # If still having issues, try this instead:
 # RUN pip install --no-cache-dir --upgrade pip setuptools wheel
