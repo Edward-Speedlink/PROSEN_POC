@@ -8,6 +8,229 @@
         #feed { width: 100%; height: 100%; }
         #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
         #results { max-height: 200px; overflow-y: auto; }
+        .watchlist-hit { border: 2px solid red; background: #ffe6e6; padding: 5px; margin: 2px; }
+    </style>
+</head>
+<body>
+    <h1>Plate Search for {{ camera_id }}</h1>
+    <div id="video-container">
+        <img id="feed" src="/cameras/{{ camera_id }}/stream" alt="Camera Stream" style="width: 100%; height: 100%;" />
+        <canvas id="overlay"></canvas>
+    </div>
+    
+    <div style="margin: 20px 0;">
+        <input id="watchlist" placeholder="Enter plates to watch for (e.g., ABC123,XYZ789)" style="width: 300px; padding: 8px;" />
+        <button onclick="updateWatchlist()">Update Watchlist</button>
+    </div>
+    
+    <button onclick="startSearch()">Start Plate Search (60s)</button>
+    <button onclick="stopSearch()">Stop Search</button>
+    
+    <div id="results"></div>
+    
+    <div id="live-plates" style="margin-top: 20px;">
+        <h2>Live Detected Plates</h2>
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr>
+                    <th>Plate Text</th>
+                    <th>Confidence</th>
+                    <th>Watchlist Match</th>
+                    <th>Detected At</th>
+                </tr>
+            </thead>
+            <tbody id="plates-table"></tbody>
+        </table>
+    </div>
+
+    <script>
+        const socket = io('http://localhost:5000');
+        const cameraId = '{{ camera_id }}';
+        const canvas = document.getElementById('overlay');
+        const ctx = canvas.getContext('2d');
+        const resultsDiv = document.getElementById('results');
+        const img = document.getElementById('feed');
+        
+        // Set canvas size to match video
+        canvas.width = 640;
+        canvas.height = 480;
+
+        let watchlist = [];
+        let detectedPlates = new Map(); // Store plates by text for deduplication
+
+        // Connect to WS room
+        socket.on('connect', () => {
+            console.log('Socket.IO connected');
+            socket.emit('connect_plate_ws', { camera_id: cameraId });
+        });
+        
+        socket.on('connect_error', (err) => {
+            console.error('Socket.IO connect error:', err);
+            alert('Failed to connect to server');
+        });
+
+        // Handle plate detections
+        socket.on('plate_update', (data) => {
+            if (data.camera_id !== cameraId) return;
+            
+            console.log('Plate update:', data.plates);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            data.plates.forEach(plate => {
+                const isWatchlistHit = watchlist.includes(plate.text.toUpperCase()) || data.watchlist_hit;
+                
+                // Draw bounding box
+                ctx.strokeStyle = isWatchlistHit ? 'red' : 'green';
+                ctx.lineWidth = isWatchlistHit ? 3 : 2;
+                const width = plate.box[2] - plate.box[0];
+                const height = plate.box[3] - plate.box[1];
+                ctx.strokeRect(plate.box[0], plate.box[1], width, height);
+                
+                // Draw label
+                ctx.fillStyle = isWatchlistHit ? 'red' : 'white';
+                ctx.font = '16px Arial';
+                ctx.fillText(`${plate.text} (${(plate.conf * 100).toFixed(1)}%)`, plate.box[0], plate.box[1] - 5);
+                
+                // Store plate for table (keep highest confidence)
+                if (!detectedPlates.has(plate.text) || plate.conf > detectedPlates.get(plate.text).confidence) {
+                    detectedPlates.set(plate.text, {
+                        text: plate.text,
+                        confidence: plate.conf,
+                        isWatchlistHit: isWatchlistHit,
+                        matchedPlate: data.matched_plate,
+                        timestamp: new Date()
+                    });
+                }
+            });
+            
+            updatePlatesTable();
+        });
+
+        socket.on('search_complete', (data) => {
+            if (data.camera_id === cameraId) {
+                alert('Search complete!');
+                resultsDiv.innerHTML += '<p>Search completed.</p>';
+            }
+        });
+
+        // Update plates table
+        function updatePlatesTable() {
+            const tableBody = document.getElementById('plates-table');
+            tableBody.innerHTML = '';
+            
+            detectedPlates.forEach(plate => {
+                const row = document.createElement('tr');
+                if (plate.isWatchlistHit) {
+                    row.style.backgroundColor = '#ffebee';
+                }
+                row.innerHTML = `
+                    <td>${plate.text}</td>
+                    <td>${(plate.confidence * 100).toFixed(1)}%</td>
+                    <td>${plate.isWatchlistHit ? '🚨 YES' + (plate.matchedPlate ? ` (${plate.matchedPlate})` : '') : 'No'}</td>
+                    <td>${plate.timestamp.toLocaleTimeString()}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Start plate search - FIXED ENDPOINT
+        function startSearch() {
+            console.log('Starting plate search');
+            
+            fetch('/ai/start_plate_search', {  // CORRECT ENDPOINT
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    camera_ids: [cameraId],  // Send as array in JSON
+                    duration: 60 
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                console.log('Start response:', data);
+                if (data.started) {
+                    alert('Plate search started successfully!');
+                } else if (data.error) {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(err => {
+                console.error('Start error:', err);
+                alert('Failed to start search: ' + err.message);
+            });
+        }
+
+        // Stop plate search - FIXED ENDPOINT
+        function stopSearch() {
+            console.log('Stopping plate search');
+            
+            fetch('/ai/stop_plate_search', {  // CORRECT ENDPOINT
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    camera_ids: [cameraId]  // Send as array in JSON
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                console.log('Stop response:', data);
+                if (data.stopped) {
+                    alert('Plate search stopped!');
+                }
+            })
+            .catch(err => {
+                console.error('Stop error:', err);
+                alert('Failed to stop search: ' + err.message);
+            });
+        }
+
+        // Update watchlist
+        function updateWatchlist() {
+            const watchlistInput = document.getElementById('watchlist');
+            watchlist = watchlistInput.value.split(',')
+                .map(s => s.trim().toUpperCase())
+                .filter(s => s.length > 0);
+                
+            console.log('Watchlist updated:', watchlist);
+            alert('Watchlist updated: ' + watchlist.join(', '));
+        }
+
+        // Handle stream errors
+        img.onerror = () => {
+            console.error('Stream failed to load');
+            alert('Camera stream failed to load. Check if camera is available.');
+        };
+        
+        img.onload = () => console.log('Stream loaded successfully');
+
+        // Initialize watchlist
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Plate search page loaded for camera:', cameraId);
+        });
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+<!-- <!DOCTYPE html>
+<html>
+<head>
+    <title>Plate Search</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
+    <style>
+        #video-container { position: relative; width: 640px; height: 480px; border: 1px solid #ccc; }
+        #feed { width: 100%; height: 100%; }
+        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        #results { max-height: 200px; overflow-y: auto; }
     </style>
 </head>
 <body>
@@ -20,7 +243,7 @@
     <button onclick="startSearch()">Start Plate Search (60s)</button>
     <button onclick="stopSearch()">Stop</button>
     <div id="results"></div>
-    <!-- Add after <div id="results"></div> -->
+    //Add after <div id="results"></div> 
 <div id="live-plates" style="margin-top: 20px;">
     <h2>Live Plates (Conf 0.6+)</h2>
     <table style="width: 100%; border-collapse: collapse;">
@@ -143,7 +366,7 @@ socket.on('plate_update', (data) => {
 </body>
 </html>
 
-
+ -->
 
 
 

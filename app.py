@@ -1,5 +1,6 @@
-from flask import Flask, render_template
-from flask_socketio import SocketIO
+import cv2
+from flask import Flask, Response, jsonify, render_template
+from flask_socketio import SocketIO, leave_room
 from modules.ai.routes_ai import ai_bp
 from modules.camera.routes_camera import camera_bp
 from modules.drone.routes_drone import drone_bp
@@ -12,12 +13,14 @@ from flask import send_from_directory
 # from flask_migrate import Migrate
 # from flask_bcrypt import Bcrypt
 # from flask_jwt_extended import JWTManager
-from config import SQLALCHEMY_DATABASE_URI, SQLALCHEMY_TRACK_MODIFICATIONS, JWT_SECRET_KEY
+from config import SQLALCHEMY_DATABASE_URI, SQLALCHEMY_TRACK_MODIFICATIONS, JWT_SECRET_KEY, CAMERAS
 import os
 from modules.app_api.test_db import test_bp
 from modules.extensions import db, migrate, bcrypt, jwt
 from models import User, Vehicle, Complaint
 import eventlet
+
+
 
 # # Initialize extensions
 # db = SQLAlchemy()
@@ -72,6 +75,102 @@ app.register_blueprint(vehicle_bp, url_prefix="/api/vehicles")
 app.register_blueprint(complaint_bp, url_prefix="/api/complaints")
 app.register_blueprint(test_bp, url_prefix="/api")
 
+
+
+# Global dictionary to store camera instances
+camera_instances = {}
+
+def generate_frames(camera_id):
+    """Generate frames from camera for streaming"""
+    rtsp_url = CAMERAS.get(camera_id.lower())
+    if not rtsp_url:
+        return
+    
+    # Create or reuse camera instance
+    if camera_id not in camera_instances:
+        camera_instances[camera_id] = cv2.VideoCapture(rtsp_url)
+    
+    cap = camera_instances[camera_id]
+    
+    while True:
+        success, frame = cap.read()
+        if not success:
+            # Try to reconnect if frame read fails
+            cap.release()
+            cap = cv2.VideoCapture(rtsp_url)
+            camera_instances[camera_id] = cap
+            continue
+        
+        # Encode frame as JPEG
+        ret, buffer = cv2.imencode('.jpg', frame)
+        frame = buffer.tobytes()
+        
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+@app.route('/stream/<camera_id>')
+def stream_feed(camera_id):
+    """Stream camera feed as MJPEG"""
+    rtsp_url = CAMERAS.get(camera_id.lower())
+    if not rtsp_url:
+        return "Camera not found", 404
+    
+    return Response(generate_frames(camera_id),
+                   mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
+@app.route('/plate_test')
+def plate_test():
+    return render_template('plate_test.html')
+
+@app.route('/camera_status')
+def camera_status():
+    """Check if cameras are accessible"""
+    status = {}
+    for cam_id, rtsp_url in CAMERAS.items():
+        try:
+            cap = cv2.VideoCapture(rtsp_url)
+            if cap.isOpened():
+                status[cam_id] = {
+                    'status': 'online',
+                    'url': rtsp_url
+                }
+                cap.release()
+            else:
+                status[cam_id] = {
+                    'status': 'offline', 
+                    'url': rtsp_url
+                }
+        except Exception as e:
+            status[cam_id] = {
+                'status': 'error',
+                'error': str(e)
+            }
+    return jsonify(status)
+
+@app.route('/advanced_plate_search')
+def advanced_plate_search():
+    return render_template('advanced_plate_search.html')
+
+@app.route('/unified_plate_search')
+def unified_plate_search():
+    return render_template('unified_plate_search.html')
+
+# @ai_bp.route('/cameras', methods=['GET'])
+# def get_cameras():
+#     """Get available cameras"""
+#     return jsonify({
+#         'available_cameras': list(CAMERAS.keys())
+#     })
+
+@socketio.on('leave_room')
+def handle_leave_room(data):
+    """Leave a camera room"""
+    camera_id = data.get('camera_id')
+    if camera_id:
+        leave_room(camera_id)
+        print(f"Left room: {camera_id}")
+    
 # Basic pages (templates)
 @app.route('/')
 def index():

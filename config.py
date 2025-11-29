@@ -29,12 +29,22 @@ DRONE_VIDEO_UDP = os.getenv('DRONE_VIDEO_UDP', 'udp://127.0.0.1:5600')
 DRONE_MIN_BATTERY = int(os.getenv('DRONE_MIN_BATTERY', 20))
 DRONE_CONNECTION_RETRIES = int(os.getenv('DRONE_CONNECTION_RETRIES', 3))
 
+# personal mail credentials from tests
+# EMAIL_SERVER = 'smtp.gmail.com'
+# EMAIL_PORT = 587
+# EMAIL_USERNAME = 'ndiyoedward@gmail.com'
+# EMAIL_PASSWORD = 'nhta zxnx xdas bngl' 
 
-EMAIL_SERVER = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USERNAME = 'ndiyoedward@gmail.com'
-EMAIL_PASSWORD = 'nhta zxnx xdas bngl'  # Use app password for Gmail
-CEO_EMAIL =   'ndiyoedward@icloud.com'  # 'danieluokon@gmail.com' #get mr. dan's mail to put here
+EMAIL_SERVER='speedkonnectng.com'
+EMAIL_PORT=587
+EMAIL_USERNAME='support@speedkonnectng.com'
+EMAIL_PASSWORD='tqooklujxewoeooj'
+SUPPORT_EMAIL='support@speedkonnectng.com'
+
+
+ # Use app password for Gmail
+CEO_EMAIL =  "daniel@speedlinkng.com" # 'ndiyoedward@icloud.com'  # 'danieluokon@gmail.com' #get mr. dan's mail to put here
+CEO_PHONE = "07067281841"
 WATCHLIST_PLATES = ['BER631NR', 'SKP343CW', 'KMK404AE']  # CEO's plate(s) for special alerts
 # WATCHLIST_FACES = {"John Doe", "Jane Smith", "Mike Ross"}  # set of known names
 # config.py
@@ -62,6 +72,11 @@ CONF_THRESHOLD = 0.25  # Lower from 0.5
 
 # SKIP_FRAMES = 5  # Process every 5th frame for CPU efficiency
 SKIP_FRAMES = 10 # Process every 5th frame for CPU efficiency
+
+# Whatsapp configs
+WHATSAPP_PHONE_NUMBER_ID=808921198974802
+WHATSAPP_TOKEN="EAAZAErWsgvsIBPlmpJAo1tGuVxXaLDcjyPAuNAlQfZBG1w4U337P1etgINLjLlOCLbtWqttnmsIpTXqn9vjKqAajjoUHjTFpUHZC2M1ex62ZBRPLqXuolfzFIyZClYgmurq4fG4kRYrZBrRey2h3QFJvR7ODlHaIB9QBM7t8jU0wpTi0z8QteN64nX4PPNlVf31gZDZD"
+CEO_PHONE = "07067281841"
 
 # Existing email/plate configs...
 # WATCHLIST_FACES = ['Mr. Daniel Okon']  # CEO's name for special alerts

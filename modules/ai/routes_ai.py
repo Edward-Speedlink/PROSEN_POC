@@ -23,7 +23,7 @@ from difflib import SequenceMatcher
 from collections import Counter
 from ultralytics import YOLO
 import cv2
-
+from utils.notifications import notification_service
 
 
 def similar(a, b):
@@ -165,11 +165,31 @@ def stop_live_analysis():
     return {"stopped": stopped}
 
 
+@ai_bp.route('/cameras', methods=['GET'])
+def get_cameras():
+    """Get available cameras"""
+    return jsonify({
+        'available_cameras': list(CAMERAS.keys())
+    })
+
+    
+@ai_bp.route('/active_sessions', methods=['GET'])
+def get_active_sessions():
+    """Get currently active search sessions"""
+    sessions = {}
+    for cam_id, session_data in active_sessions.items():
+        sessions[cam_id] = {
+            'session_id': session_data['session_id'],
+            'results_count': len(session_data['results'])
+        }
+    return jsonify({'active_sessions': sessions})
+
 @ai_bp.route('/start_plate_search', methods=['POST'])
 def start_plate_search():
     data = request.json
     camera_ids = data.get('camera_ids', [])
     duration = data.get('duration', 60) #300
+    notification_methods = data.get('notification_methods', ['email', 'whatsapp'])  # New parameter
 
     if not isinstance(camera_ids, list) or not camera_ids:
         return {'error': 'Missing or invalid camera_ids list'}, 400
@@ -194,7 +214,7 @@ def start_plate_search():
         results = []
         session_id = str(uuid.uuid4())
 
-        def process_stream(rtsp_url=rtsp_url, cam_id=cam_id):  # Capture vars correctly
+        def process_stream(rtsp_url=rtsp_url, cam_id=cam_id, methods=notification_methods):  # Capture vars correctly
             cap = cv2.VideoCapture(rtsp_url)
             frame_num = 0
             start_time = time.time()
@@ -243,7 +263,7 @@ def start_plate_search():
 
                             # Send nice HTML email
                             subject = f"WATCHLIST MATCH: {matched}"
-                            body = f"""
+                            email_body = f"""
                             <h2>Watchlist Plate Detected!</h2>
                             <p><strong>Detected:</strong> {plate_text} → <strong>{matched}</strong></p>
                             <p><strong>Camera:</strong> {cam_id}</p>
@@ -252,7 +272,18 @@ def start_plate_search():
                             <hr>
                             <p>See attached snapshot. 5-second clip saved.</p>
                             """
-                            send_email(subject, body, CEO_EMAIL, attachments=[img_path], html=True)
+
+                            whatsapp_body = f"Plate: {plate_text} ≈ {matched}\nCamera: {cam_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nConfidence: {plate['conf']:.2%}"
+
+                            notification_service.send_security_alert(
+                                subject=subject,
+                                body=whatsapp_body,
+                                alert_type="PLATE",
+                                attachments=[img_path],
+                                html=True,
+                                methods=methods
+                            )
+                            # send_email(subject, email_body, CEO_EMAIL, attachments=[img_path], html=True)
 
                             # Emit with match info
                             socketio.emit('plate_update', {
@@ -321,13 +352,14 @@ def start_face_search(camera_id):
     rtsp_url = camera_info['url']
     location = camera_info['location']
     duration = request.json.get('duration', 60)
+    notification_methods = request.json.get('notification_methods', ['email', 'whatsapp'])  # New parameter
 
     stop_event = Event()
     results = []
     session_id = str(uuid.uuid4())
     socketio = get_socketio()
 
-    def process_stream(rtsp_url, duration):
+    def process_stream(rtsp_url, duration, methods):
         cap = cv2.VideoCapture(rtsp_url)
         frame_num = 0
         start_time = time.time()
@@ -371,8 +403,17 @@ def start_face_search(camera_id):
                     threading.Thread(target=save_video_clip, args=(rtsp_url, 5, f"{camera_id}_{face['name']}")).start()
 
                     subject = f"{face['name']} detected at {location}"
-                    body = f"{face['name']} ({face.get('role', 'N/A')}) detected at {location}."
-                    send_email(subject, body, CEO_EMAIL, attachments=[img_path])
+                    # body = f"{face['name']} ({face.get('role', 'N/A')}) detected at {location}."
+                    email_body = f"{face['name']} ({face.get('role', 'N/A')}) detected at {location}."
+                    whatsapp_body = f"Person: {face['name']}\nRole: {face.get('role', 'N/A')}\nLocation: {location}\nCamera: {camera_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    notification_service.send_security_alert(
+                        subject=subject,
+                        body=whatsapp_body,
+                        alert_type="FACE",
+                        attachments=[img_path],
+                        methods=methods
+                    )
+                    # send_email(subject, body, CEO_EMAIL, attachments=[img_path])
 
                     socketio.emit("face_match", {
                         "id": str(uuid.uuid4()),
@@ -390,7 +431,7 @@ def start_face_search(camera_id):
         cap.release()
         socketio.emit('search_complete', {'camera_id': camera_id})
 
-    thread = Thread(target=process_stream, args=(rtsp_url, duration))
+    thread = Thread(target=process_stream, args=(rtsp_url, duration, notification_methods))
     thread.start()
     active_sessions[camera_id] = {
         'thread': thread,
@@ -417,6 +458,7 @@ def stop_face_search(camera_id):
 def search_plate(plate_text):
     camera_list = request.json.get('cameras', [])
     duration = request.json.get('duration', 60)
+    notification_methods = request.json.get('notification_methods', ['email', 'whatsapp'])  # New parameter
     normalized_plate = plate_text.upper().replace(" ", "")
     session_id = str(uuid.uuid4())
     socketio = get_socketio()
@@ -432,7 +474,7 @@ def search_plate(plate_text):
         stop_event = Event()
         results = []
 
-        def process_stream(rtsp_url, duration, camera_id):
+        def process_stream(rtsp_url, duration, camera_id, methods):
             cap = cv2.VideoCapture(rtsp_url)
             frame_num = 0
             start_time = time.time()
@@ -463,13 +505,23 @@ def search_plate(plate_text):
 
                         # --- Send Email Alert ---
                         subject = f"Plate {p['text']} Detected at {camera_id}"
-                        body = f"Plate {p['text']} was recognized at camera {camera_id}. See attached snapshot."
-                        send_email(subject, body, CEO_EMAIL, attachments=[image_path])
+                        email_body = f"Plate {p['text']} was recognized at camera {camera_id}. See attached snapshot."
+                        whatsapp_body = f"Plate: {p['text']}\nCamera: {camera_id}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nConfidence: {p.get('conf', 0.0):.2%}"
+
+                        notification_service.send_security_alert(
+                            subject=subject,
+                            body=whatsapp_body,
+                            alert_type="PLATE",
+                            attachments=[image_path],
+                            methods=methods
+                        )
+                        # body = f"Plate {p['text']} was recognized at camera {camera_id}. See attached snapshot."
+                        # send_email(subject, body, CEO_EMAIL, attachments=[image_path])
 
             cap.release()
             socketio.emit('search_complete', {'camera_id': camera_id, 'session_id': session_id})
 
-        thread = Thread(target=process_stream, args=(rtsp_url, duration, camera_id))
+        thread = Thread(target=process_stream, args=(rtsp_url, duration, camera_id, notification_methods))
         thread.start()
         active_sessions[camera_id] = {
             'thread': thread,

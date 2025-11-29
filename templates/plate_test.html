@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Plate Search Test - NEPA_STREET_VIEW</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .controls {
+            margin: 20px 0;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 5px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        .plate {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+        }
+        .watchlist-hit {
+            border: 2px solid #dc3545;
+            background: #f8d7da;
+        }
+        .log {
+            height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background: #f8f9fa;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚗 Plate Search Test - NEPA_STREET_VIEW</h1>
+        
+        <div class="controls">
+            <h3>Test Controls</h3>
+            <button onclick="startPlateSearch()">Start Plate Search</button>
+            <button onclick="stopPlateSearch()">Stop Plate Search</button>
+            <button onclick="checkActiveSessions()">Check Active Sessions</button>
+            
+            <div style="margin-top: 10px;">
+                <label>Duration (seconds): </label>
+                <input type="number" id="duration" value="30" min="10" max="300">
+            </div>
+            
+            <div style="margin-top: 10px;">
+                <label>Notification Methods: </label>
+                <select id="notificationMethods">
+                    <option value="email,whatsapp">Both Email & WhatsApp</option>
+                    <option value="email">Email Only</option>
+                    <option value="whatsapp">WhatsApp Only</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="status" class="status info">Ready to test plate detection</div>
+
+        <div>
+            <h3>Live Plate Detections</h3>
+            <div id="detections"></div>
+        </div>
+
+        <div>
+            <h3>Session Log</h3>
+            <div id="log" class="log"></div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io('http://localhost:5000');
+        const cameraId = 'nepa_street_view';
+        let isSearching = false;
+
+        // Add log message
+        function addLog(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        // Update status
+        function updateStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
+
+        // Socket event listeners
+        socket.on('connect', function() {
+            addLog('✅ Connected to server');
+            socket.emit('connect_plate_ws', { camera_id: cameraId });
+        });
+
+        socket.on('disconnect', function() {
+            addLog('❌ Disconnected from server');
+            updateStatus('Disconnected from server', 'error');
+        });
+
+        socket.on('plate_update', function(data) {
+            if (data.camera_id !== cameraId) return;
+            
+            addLog(`📹 Detected ${data.plates.length} plate(s)`);
+            
+            data.plates.forEach(plate => {
+                const plateDiv = document.createElement('div');
+                plateDiv.className = `plate ${data.watchlist_hit ? 'watchlist-hit' : ''}`;
+                
+                plateDiv.innerHTML = `
+                    <strong>Plate:</strong> ${plate.text} 
+                    <strong>Confidence:</strong> ${(plate.conf * 100).toFixed(1)}%
+                    ${data.watchlist_hit ? '<span style="color: red; margin-left: 10px;">🚨 WATCHLIST HIT!</span>' : ''}
+                    ${data.matched_plate ? `<br><strong>Matched:</strong> ${data.matched_plate}` : ''}
+                    <br><small>Time: ${new Date().toLocaleTimeString()}</small>
+                `;
+                
+                document.getElementById('detections').prepend(plateDiv);
+            });
+        });
+
+        socket.on('search_complete', function(data) {
+            if (data.camera_id === cameraId) {
+                addLog('✅ Search completed');
+                updateStatus('Search completed', 'success');
+                isSearching = false;
+            }
+        });
+
+        // Start plate search
+        async function startPlateSearch() {
+            if (isSearching) {
+                alert('Search is already running!');
+                return;
+            }
+
+            const duration = document.getElementById('duration').value;
+            const methods = document.getElementById('notificationMethods').value.split(',');
+            
+            updateStatus('Starting plate search...', 'info');
+            addLog('🚀 Starting plate search on NEPA_STREET_VIEW');
+            addLog(`Duration: ${duration}s, Methods: ${methods.join(', ')}`);
+
+            try {
+                const response = await fetch('/ai/start_plate_search', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        camera_ids: [cameraId],
+                        duration: parseInt(duration),
+                        notification_methods: methods
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    updateStatus('Plate search started successfully!', 'success');
+                    addLog(`✅ Search started successfully`);
+                    addLog(`Session: ${JSON.stringify(data.started)}`);
+                    
+                    if (data.errors) {
+                        addLog(`❌ Errors: ${JSON.stringify(data.errors)}`);
+                    }
+                    
+                    isSearching = true;
+                } else {
+                    updateStatus(`Error: ${data.error}`, 'error');
+                    addLog(`❌ Failed to start search: ${data.error}`);
+                }
+            } catch (error) {
+                updateStatus(`Network error: ${error.message}`, 'error');
+                addLog(`❌ Network error: ${error.message}`);
+            }
+        }
+
+        // Stop plate search
+        async function stopPlateSearch() {
+            if (!isSearching) {
+                alert('No active search to stop!');
+                return;
+            }
+
+            updateStatus('Stopping plate search...', 'info');
+            addLog('🛑 Stopping plate search');
+
+            try {
+                const response = await fetch('/ai/stop_plate_search', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        camera_ids: [cameraId]
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    updateStatus('Plate search stopped!', 'success');
+                    addLog('✅ Search stopped successfully');
+                    addLog(`Stopped: ${JSON.stringify(data.stopped)}`);
+                    isSearching = false;
+                } else {
+                    updateStatus(`Error: ${data.error}`, 'error');
+                    addLog(`❌ Failed to stop search: ${data.error}`);
+                }
+            } catch (error) {
+                updateStatus(`Network error: ${error.message}`, 'error');
+                addLog(`❌ Network error: ${error.message}`);
+            }
+        }
+
+        // Check active sessions
+        async function checkActiveSessions() {
+            addLog('📋 Checking active sessions...');
+
+            try {
+                const response = await fetch('/ai/active_sessions');
+                const data = await response.json();
+                
+                addLog(`Active sessions: ${Object.keys(data.active_sessions).length}`);
+                Object.keys(data.active_sessions).forEach(camId => {
+                    addLog(`- ${camId}: ${data.active_sessions[camId].session_id}`);
+                });
+                
+                if (Object.keys(data.active_sessions).includes(cameraId)) {
+                    isSearching = true;
+                    updateStatus('Search is active', 'success');
+                } else {
+                    isSearching = false;
+                    updateStatus('No active search', 'info');
+                }
+            } catch (error) {
+                addLog(`❌ Failed to check sessions: ${error.message}`);
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            addLog('🔧 Test interface loaded');
+            checkActiveSessions();
+        });
+    </script>
+</body>
+</html>
+
+
