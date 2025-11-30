@@ -3,7 +3,7 @@ from flask import Flask, Response, jsonify, render_template
 from flask_socketio import SocketIO, leave_room
 from modules.ai.routes_ai import ai_bp
 from modules.camera.routes_camera import camera_bp
-from modules.drone.routes_drone import drone_bp
+# from modules.drone.routes_drone import drone_bp
 from modules.app_api.routes_auth import auth_bp
 from modules.app_api.routes_vehicle import vehicle_bp
 from modules.app_api.routes_complaint import complaint_bp
@@ -69,7 +69,7 @@ jwt.init_app(app)
 # Register blueprints
 app.register_blueprint(ai_bp, url_prefix='/ai')
 app.register_blueprint(camera_bp)
-app.register_blueprint(drone_bp, url_prefix='/drone')
+# app.register_blueprint(drone_bp, url_prefix='/drone')
 app.register_blueprint(auth_bp, url_prefix="/api/auth")
 app.register_blueprint(vehicle_bp, url_prefix="/api/vehicles")
 app.register_blueprint(complaint_bp, url_prefix="/api/complaints")
