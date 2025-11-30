@@ -6,6 +6,8 @@ from flask_bcrypt import Bcrypt
 auth_bp = Blueprint("auth_bp", __name__)
 bcrypt = Bcrypt()
 
+
+
 @auth_bp.route("/register", methods=["POST"])
 def register():
     data = request.get_json()
@@ -40,7 +42,8 @@ def login():
     if not user or not user.check_password(password):
         return jsonify({"message": "Invalid credentials"}), 401
 
-    access_token = create_access_token(identity={"id": user.id, "role": user.role})
+    # access_token = create_access_token(identity={"id": user.id, "role": user.role})
+    access_token = create_access_token(identity=str(user.id))
     return jsonify({"access_token": access_token, "user": {
         "id": user.id,
         "full_name": user.full_name,

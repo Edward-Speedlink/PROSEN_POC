@@ -12,11 +12,17 @@ socketio = SocketIO(cors_allowed_origins="*")
 # --------------------------------------------------------
 # Helper: Get current user
 # --------------------------------------------------------
+# def get_current_user():
+#     identity = get_jwt_identity()
+#     if not identity:
+#         return None
+#     return User.query.get(identity["id"])
+
 def get_current_user():
     identity = get_jwt_identity()
     if not identity:
         return None
-    return User.query.get(identity["id"])
+    return User.query.get(int(identity)) 
 
 # --------------------------------------------------------
 # Add a new vehicle

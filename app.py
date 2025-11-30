@@ -197,6 +197,13 @@ def face_search(camera_id):
 def handle_connect():
     print("Law enforcement dashboard connected to /alerts")
 
+with app.app_context():
+    try:
+        db.create_all()
+        print("✅ Database tables checked/created successfully!")
+    except Exception as e:
+        print(f"❌ Error creating tables: {e}")
+        
 if __name__ == "__main__":
     print("🚀 Flask-SocketIO server running at http://localhost:5000")
     socketio.run(app, host="0.0.0.0", port=5000, debug=True
